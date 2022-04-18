@@ -64,19 +64,22 @@ class Helpers
 
         // Is the url already fully qualified, a Data URI, or a reference to a named anchor?
         // File-protocol URLs may require additional processing (e.g. for URLs with a relative path)
-        if ((mb_strpos($url, "://") !== false && substr($url, 0, 7) !== "file://") || mb_substr($url, 0, 1) === "#" || mb_strpos($url, "data:") === 0 || mb_strpos($url, "mailto:") === 0 || mb_strpos($url, "tel:") === 0) {
+        if ((mb_strpos($url, "://") !== false && !in_array(substr($url, 0, 7), ["file://", "phar://"], true)) || mb_substr($url, 0, 1) === "#" || mb_strpos($url, "data:") === 0 || mb_strpos($url, "mailto:") === 0 || mb_strpos($url, "tel:") === 0) {
             return $url;
         }
 
+        $res = "";
         if (strpos($url, "file://") === 0) {
             $url = substr($url, 7);
             $protocol = "";
         }
+        if (strpos($url, "phar://") === 0) {
+            $res = substr($url, strpos($url, ".phar")+5);
+            $url = substr($url, 7, strpos($url, ".phar")-2);
+            $protocol = "phar://";
+        }
 
         $ret = "";
-        if ($protocol !== "file://") {
-            $ret = $protocol;
-        }
 
         if (!in_array(mb_strtolower($protocol), ["http://", "https://", "ftp://", "ftps://"], true)) {
             //On Windows local file, an abs path can begin also with a '\' or a drive letter and colon
@@ -89,9 +92,16 @@ class Helpers
             }
             $ret .= $url;
             $ret = preg_replace('/\?(.*)$/', "", $ret);
+            $ret = realpath($ret);
+
+            if ($protocol === "phar://") {
+                $ret = "phar://" . $ret . $res;
+            }
+
             return $ret;
         }
 
+        $ret = $protocol;
         // Protocol relative urls (e.g. "//example.org/style.css")
         if (strpos($url, '//') === 0) {
             $ret .= substr($url, 2);
@@ -480,13 +490,18 @@ class Helpers
 
         } else {
 
+            $protocol = "";
+
             $i = mb_stripos($url, "file://");
             if ($i !== false) {
                 $url = mb_substr($url, $i + 7);
+                //$protocol = "file://";
             }
-
-            $protocol = ""; // "file://"; ? why doesn't this work... It's because of
-            // network filenames like //COMPU/SHARENAME
+            $i = mb_stripos($url, "phar://");
+            if ($i !== false) {
+                $url = mb_substr($url, $i + 7);
+                $protocol = "phar://";
+            }
 
             $host = ""; // localhost, really
             $file = basename($url);
@@ -878,12 +893,13 @@ class Helpers
         $content = null;
         $headers = null;
         [$protocol] = Helpers::explode_url($uri);
-        $is_local_path = ($protocol === "" || $protocol === "file://");
+        $is_local_path = in_array(strtolower($protocol), ["", "file://", "phar://"], true);
+        $can_use_curl = in_array(strtolower($protocol), ["http://", "https://"], true);
 
         set_error_handler([self::class, 'record_warnings']);
 
         try {
-            if ($is_local_path || ini_get('allow_url_fopen')) {
+            if ($is_local_path || ini_get('allow_url_fopen') || !$can_use_curl) {
                 if ($is_local_path === false) {
                     $uri = Helpers::encodeURI($uri);
                 }
@@ -899,7 +915,7 @@ class Helpers
                     $headers = $http_response_header;
                 }
 
-            } elseif (function_exists('curl_exec')) {
+            } elseif ($can_use_curl && function_exists('curl_exec')) {
                 $curl = curl_init($uri);
 
                 curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);

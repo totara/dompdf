@@ -198,16 +198,6 @@ class Dompdf
     private $quirksmode = false;
 
     /**
-    * Protocol whitelist
-    *
-    * Protocols and PHP wrappers allowed in URLs. Full support is not
-    * guaranteed for the protocols/wrappers contained in this array.
-    *
-    * @var array
-    */
-    private $allowedProtocols = ["", "file://", "http://", "https://"];
-
-    /**
     * Local file extension whitelist
     *
     * File extensions supported by dompdf for local files.
@@ -353,43 +343,25 @@ class Dompdf
             [$this->protocol, $this->baseHost, $this->basePath] = Helpers::explode_url($file);
         }
         $protocol = strtolower($this->protocol);
-        
         $uri = Helpers::build_url($this->protocol, $this->baseHost, $this->basePath, $file);
 
-        if (!in_array($protocol, $this->allowedProtocols, true)) {
+        $allowed_protocols = $this->options->getAllowedProtocols();
+        if (!array_key_exists($protocol, $allowed_protocols)) {
             throw new Exception("Permission denied on $file. The communication protocol is not supported.");
         }
 
-        if (!$this->options->isRemoteEnabled() && ($protocol !== "" && $protocol !== "file://")) {
-            throw new Exception("Remote file requested, but remote file download is disabled.");
+        if (strpos($uri, "://") === false) {
+            $ext = strtolower(pathinfo($uri, PATHINFO_EXTENSION));
+            if (!in_array($ext, $this->allowedLocalFileExtensions)) {
+                throw new Exception("Permission denied on $file: The file extension is forbidden.");
+            }
         }
 
-        if ($protocol === "" || $protocol === "file://") {
-            $realfile = realpath($uri);
-
-            $chroot = $this->options->getChroot();
-            $chrootValid = false;
-            foreach ($chroot as $chrootPath) {
-                $chrootPath = realpath($chrootPath);
-                if ($chrootPath !== false && strpos($realfile, $chrootPath) === 0) {
-                    $chrootValid = true;
-                    break;
-                }
+        foreach ($allowed_protocols[$protocol]["rules"] as $rule) {
+            [$result, $message] = $rule($uri);
+            if (!$result) {
+                throw new Exception("Error loading $file: $message");
             }
-            if ($chrootValid !== true) {
-                throw new Exception("Permission denied on $file. The file could not be found under the paths specified by Options::chroot.");
-            }
-
-            $ext = strtolower(pathinfo($realfile, PATHINFO_EXTENSION));
-            if (!in_array($ext, $this->allowedLocalFileExtensions)) {
-                throw new Exception("Permission denied on $file. This file extension is forbidden");
-            }
-
-            if (!$realfile) {
-                throw new Exception("File '$file' not found.");
-            }
-
-            $uri = $realfile;
         }
 
         [$contents, $http_response_header] = Helpers::getFileContent($uri, $this->options->getHttpContext());

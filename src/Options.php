@@ -63,6 +63,21 @@ class Options
     private $chroot;
 
     /**
+    * Protocol whitelist
+    *
+    * Protocols and PHP wrappers allowed in URIs. Full support is not
+    * guaranteed for the protocols/wrappers specified by this array.
+    *
+    * @var array
+    */
+    private $allowedProtocols = [
+        "" => ["rules" => []],
+        "file://" => ["rules" => []],
+        "http://" => ["rules" => []],
+        "https://" => ["rules" => []]
+    ];
+
+    /**
      * @var string
      */
     private $logOutputFile;
@@ -310,6 +325,8 @@ class Options
             ]
         ]);
 
+        $this->setAllowedProtocols(",file://,http://,https://");
+
         if (null !== $attributes) {
             $this->set($attributes);
         }
@@ -334,6 +351,8 @@ class Options
                 $this->setFontCache($value);
             } elseif ($key === 'chroot') {
                 $this->setChroot($value);
+            } elseif ($key === 'allowedProtocols') {
+                $this->setAllowedProtocols($value);
             } elseif ($key === 'logOutputFile' || $key === 'log_output_file') {
                 $this->setLogOutputFile($value);
             } elseif ($key === 'defaultMediaType' || $key === 'default_media_type') {
@@ -399,6 +418,8 @@ class Options
             return $this->getFontCache();
         } elseif ($key === 'chroot') {
             return $this->getChroot();
+        } elseif ($key === 'allowedProtocols') {
+            return $this->getAllowedProtocols();
         } elseif ($key === 'logOutputFile' || $key === 'log_output_file') {
             return $this->getLogOutputFile();
         } elseif ($key === 'defaultMediaType' || $key === 'default_media_type') {
@@ -496,6 +517,77 @@ class Options
         } elseif (is_array($chroot)) {
             $this->chroot = $chroot;
         }
+        return $this;
+    }
+
+    /**
+     * @return array
+     */
+    public function getAllowedProtocols()
+    {
+        $allowedProtocols = [];
+        if (is_array($this->allowedProtocols)) {
+            $allowedProtocols = $this->allowedProtocols;
+        }
+        return $allowedProtocols;
+    }
+
+    /**
+     * @param array|string $allowedProtocols The protocols to allow as an array (["protocol://" => ["rules" => [callable]]], ...) or a string list of the protocols
+     * @param string $delimeter For exploding a string value in $allowedProtocols
+     * @return $this
+     */
+    public function setAllowedProtocols($allowedProtocols, string $delimiter = ',')
+    {
+        $protocols = [];
+        if (is_string($allowedProtocols)) {
+            $protocols = array_fill_keys(explode($delimiter, $allowedProtocols), []);
+        } elseif (is_array($allowedProtocols)) {
+            foreach ($allowedProtocols as $protocol => $config) {
+                if (is_string($protocol)) {
+                    $protocols[$protocol] = [];
+                    if (is_array($config)) {
+                        $protocols[$protocol] = $config;
+                    }
+                } elseif (is_string($config)) {
+                    $protocols[$config] = [];
+                }
+            }
+        }
+        $this->allowedProtocols = [];
+        foreach ($protocols as $protocol => $config) {
+            $this->addAllowedProtocol($protocol, ...($config["rules"] ?? []));
+        }
+        return $this;
+    }
+
+    /**
+     * Adds a new protocol to the allowed protocols collection
+     *
+     * @param string $protocol The scheme to add (e.g. "http://")
+     * @param callable $rule A callable that validates the protocol
+     * @return $this
+     */
+    public function addAllowedProtocol(string $protocol, callable ...$rules)
+    {
+        $protocol = strtolower($protocol);
+        if (empty($rules)) {
+            $rules = [];
+            switch ($protocol) {
+                case "":
+                case "file://":
+                    $rules[] = [$this, "validateLocalUri"];
+                    break;
+                case "http://":
+                case "https://":
+                    $rules[] = [$this, "validateRemoteUri"];
+                    break;
+                case "phar://":
+                    $rules[] = [$this, "validatePharUri"];
+                    break;
+            }
+        }
+        $this->allowedProtocols[$protocol] = ["rules" => $rules];
         return $this;
     }
 
@@ -1007,5 +1099,42 @@ class Options
     public function getHttpContext()
     {
         return $this->httpContext;
+    }
+
+    public function validateLocalUri(string $uri) {
+        $realfile = realpath($uri);
+
+        $dirs = $this->chroot;
+        $dirs[] = $this->rootDir;
+        $chrootValid = false;
+        foreach ($dirs as $chrootPath) {
+            $chrootPath = realpath($chrootPath);
+            if ($chrootPath !== false && strpos($realfile, $chrootPath) === 0) {
+                $chrootValid = true;
+                break;
+            }
+        }
+        if ($chrootValid !== true) {
+            return [false, "Permission denied. The file could not be found under the paths specified by Options::chroot."];
+        }
+
+        if (!$realfile) {
+            return [false, "File not found."];
+        }
+
+        return [true, null];
+    }
+
+    public function validatePharUri(string $uri) {
+        $file = substr(substr($uri, 0, strpos($uri, ".phar") + 5), 7);
+        return $this->validateLocalUri("$file");
+    }
+
+    public function validateRemoteUri(string $uri) {
+        if (!$this->isRemoteEnabled) {
+            return [false, "Remote file requested, but remote file download is disabled."];
+        }
+
+        return [true, null];
     }
 }
