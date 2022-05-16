@@ -875,6 +875,20 @@ class Helpers
      */
     public static function getFileContent($uri, $context = null, $offset = 0, $maxlen = null)
     {
+        // Totara: this must be safe, so allow built-in dompdf resources and pluginfile images only!
+        global $CFG;
+        $resourcepath = DIRECTORY_SEPARATOR.'dompdf'.DIRECTORY_SEPARATOR.'dompdf'.DIRECTORY_SEPARATOR.'lib'.DIRECTORY_SEPARATOR.'res'.DIRECTORY_SEPARATOR;
+        if (is_file($uri) && strpos(realpath($uri), $resourcepath) !== false) {
+            $data = file_get_contents($uri);
+            if ($offset > 0) {
+                $data = substr($data, $offset);
+            }
+            return array($data, array());
+        }
+        if (strpos($uri, $CFG->wwwroot.'/pluginfile.php') !== 0) {
+            return array(false, null);
+        }
+        
         $content = null;
         $headers = null;
         [$protocol] = Helpers::explode_url($uri);
