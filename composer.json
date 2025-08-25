@@ -1,8 +1,8 @@
 {
-    "name": "dompdf/dompdf",
+    "name": "totara/dompdf",
     "type": "library",
-    "description": "DOMPDF is a CSS 2.1 compliant HTML to PDF converter",
-    "homepage": "https://github.com/dompdf/dompdf",
+    "description": "Totara fork of DOMPDF, a CSS 2.1 compliant HTML to PDF converter",
+    "homepage": "https://github.com/totara/dompdf",
     "license": "LGPL-2.1",
     "authors": [
         {
@@ -24,7 +24,7 @@
         }
     },
     "require": {
-        "php": "^7.1 || ^8.0",
+        "php": "^8.0",
         "ext-dom": "*",
         "ext-mbstring": "*",
         "masterminds/html5": "^2.0",
@@ -45,5 +45,8 @@
         "ext-imagick": "Improves image processing performance",
         "ext-gmagick": "Improves image processing performance",
         "ext-zlib": "Needed for pdf stream compression"
+    },
+    "replace": {
+        "dompdf/dompdf": "self.version"
     }
 }
