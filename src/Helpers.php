@@ -1012,7 +1012,7 @@ class Helpers
     {
         // Totara: this must be safe, so allow built-in dompdf resources and pluginfile images only!
         global $CFG;
-        $resourcepath = DIRECTORY_SEPARATOR.'dompdf'.DIRECTORY_SEPARATOR.'dompdf'.DIRECTORY_SEPARATOR.'lib'.DIRECTORY_SEPARATOR.'res'.DIRECTORY_SEPARATOR;
+        $resourcepath = DIRECTORY_SEPARATOR.'totara'.DIRECTORY_SEPARATOR.'dompdf'.DIRECTORY_SEPARATOR.'lib'.DIRECTORY_SEPARATOR.'res'.DIRECTORY_SEPARATOR;
 
         // Totara: dompdf prefixes internal files with file:// which breaks with realpath
         $realpath = strpos($uri, 'file://') === 0 ? substr($uri, 7) : $uri;
